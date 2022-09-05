@@ -34,6 +34,9 @@ def agency_map(raw: List[str]) -> List[str]:
         "USDA": "Department of Agriculture"
     }
     
+    if raw is None:
+        return []
+
     agencies = []
     for rawAgency in raw:
         if rawAgency.upper() in abbrToName:
