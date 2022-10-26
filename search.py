@@ -4,6 +4,12 @@ import json
 from typing import List
 from bs4 import BeautifulSoup
 from datetime import datetime
+import time
+
+# findings for performance improvement
+# 1. sba search is VERY slow. 12+ seconds per search.
+# 2. repeating companies -- should keep a set of seen urls
+# best solution would be migration to async + not relooking at seen urls
 
 def agency_map(raw: List[str]) -> List[str]:
     # raw is a list of string input agencies
@@ -31,7 +37,94 @@ def agency_map(raw: List[str]) -> List[str]:
         "SBA": "Small Business Administration",
         "SSA": "Social Security Administration",
         "USAID": "Agency for International Development",
-        "USDA": "Department of Agriculture"
+        "USDA": "Department of Agriculture",
+        "WWICS":"Woodrow Wilson International Center for Scholars",
+        "VEF":"Vietnam Education Foundation",
+        "USTD":"United States Trade and Development Agency",
+        "USIP":"United States Institute of Peace",
+        "USCAVC":"United States Court of Appeals for Veterans Claims",
+        "USPS":"U.S. Postal Service",
+        "DFC":"U.S. International Development Finance Corporation",
+        "USICH":"U.S. Interagency Council on Homelessness",
+        "CBS":"U.S. Chemical Safety & Hazard Investigation Board",
+        "AGM":"U.S. Agency for Global Media",
+        "TJB":"The Judicial Branch",
+        "CIGIE":"The Council of the Inspectors General on Integrity and Efficiency",
+        "STB":"Surface Transportation Board",
+        "SI":"Smithsonian Institution",
+        "SSS":"Selective Service System",
+        "SEC":"Securities and Exchange Commission",
+        "RRB":"Railroad Retirement Board",
+        "PCLOB":"Privacy and Civil Liberties Oversight Board",
+        "PBGC":"Pension Benefit Guaranty Corporation",
+        "PC":"Peace Corps",
+        "OPIC":"Overseas Private Investment Corporation",
+        "OSC":"Office of Special Counsel",
+        "OGE":"Office of Government Ethics",
+        "OSHRC":"Occupational Safety and Health Review Commission",
+        "NWTRB":"Nuclear Waste Technical Review Board",
+        "NBRC":"Northern Border Regional Commission",
+        "NTSB":"National Transportation Safety Board",
+        "NMB":"National Mediation Board",
+        "NLRB":"National Labor Relations Board",
+        "NGA":"National Gallery of Art",
+        "NEH":"National Endowment for the Humanities",
+        "NEA":"National Endowment for the Arts",
+        "NCUA":"National Credit Union Administration",
+        "NCD":"National Council on Disability",
+        "NCPC":"National Capital Planning Commission",
+        "NARA":"National Archives and Records Administration",
+        "MKUSLUF":"Morris K. Udall and Stewart L. Udall Foundation",
+        "MCC":"Millennium Challenge Corporation",
+        "MSPB":"Merit Systems Protection Board",
+        "MMC":"Marine Mammal Commission",
+        "LOC":"Library of Congress",
+        "JFKCPA":"John F. Kennedy Center for the Performing Arts",
+        "JUSFC":"Japan-United States Friendship Commission",
+        "JMMFF":"James Madison Memorial Fellowship Foundation",
+        "ITC":"International Trade Commission",
+        "IAF":"Inter-American Foundation",
+        "IMLS":"Institute of Museum and Library Services",
+        "HSTSF":"Harry S Truman Scholarship Foundation",
+        "GCERC":"Gulf Coast Ecosystem Restoration Council",
+        "GAO":"Government Accountability Office",
+        "FTC":"Federal Trade Commission",
+        "FMSHRC":"Federal Mine Safety and Health Review Commission",
+        "FMCS":"Federal Mediation and Conciliation Service",
+        "FMC":"Federal Maritime Commission",
+        "FLRA":"Federal Labor Relations Authority",
+        "FHFA":"Federal Housing Finance Agency",
+        "FFIEC":"Federal Financial Institutions Examination Council",
+        "FEC":"Federal Election Commission",
+        "FDIC":"Federal Deposit Insurance Corporation",
+        "FCC":"Federal Communications Commission",
+        "FCSIC":"Farm Credit System Insurance Corporation",
+        "EIBUS":"Export-Import Bank of the United States",
+        "EOP":"Executive Office of the President",
+        "EEOC":"Equal Employment Opportunity Commission",
+        "EAC":"Election Assistance Commission",
+        "DCC":"District of Columbia Courts",
+        "DC":"Denali Commission",
+        "DRA":"Delta Regional Authority",
+        "DNFSB":"Defense Nuclear Facilities Safety Board",
+        "CSOSA":"Court Services and Offender Supervision Agency",
+        "CECW":"Corps of Engineers - Civil Works",
+        "CNCS":"Corporation for National and Community Service",
+        "CPSC":"Consumer Product Safety Commission",
+        "CFPB":"Consumer Financial Protection Bureau",
+        "CFTC":"Commodity Futures Trading Commission",
+        "CPPBSD":"Committee for Purchase from People Who Are Blind or Severely Disabled",
+        "CCR":"Commission on Civil Rights",
+        "CFA":"Commission of Fine Arts",
+        "CPAHA":"Commission for the Preservation of America's Heritage Abroad",
+        "BGSEEF":"Barry Goldwater Scholarship and Excellence In Education Foundation",
+        "AFRH":"Armed Forces Retirement Home",
+        "ARC":"Appalachian Regional Commission",
+        "ABMC":"American Battle Monuments Commission",
+        "ADF":"African Development Foundation",
+        "ACHP":"Advisory Council on Historic Preservation",
+        "ACUS":"Administrative Conference of the U.S.",
+        "AB":"Access Board"
     }
     
     if raw is None:
@@ -80,12 +173,13 @@ AWARD_SEARCH_REQUEST_URL = "https://api.usaspending.gov/api/v2/search/spending_b
 ENTITY_SEARCH_URL = "https://api.sam.gov/entity-information/v2/entities"
 SBA_SEARCH_URL = "https://web.sba.gov/pro-net/search/dsp_profile.cfm"
 
-API_KEY = "Qc3QVsNPUOLgTWDTHnSbFjc2lQ1eoImJXOR2EJ8U"
+API_KEY = "fTAdxPGs6owevy56b7JFidgAVn24vUAg6u7oWmBf"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--keywords', nargs="+",help="keywords for search",required=True)
 parser.add_argument('--agencies',nargs="*",help="agency abbreviations",required=False)
 parser.add_argument('--max',nargs=1,default=10,help="max number of results",required=False)
+parser.add_argument('--sba', nargs=1,default=[False],help="if this is true, it will search sba.gov",required=False)
 parser.add_argument('--debug',nargs=1,default=False,help="if this is true, debug output will be printed. otherwise, just the end json will be printed",required=False)
 
 args = parser.parse_args()
@@ -108,7 +202,22 @@ if isinstance(args.debug, bool):
 else:
     debugFlag = bool(args.debug[0])
 
+if isinstance(args.sba[0], str):
+    if str(args.sba[0]).lower() == "true":
+        sbaFlag = True
+    else: 
+        sbaFlag = False
+elif isinstance(args.sba[0], bool):
+    sbaFlag = args.sba[0]
+else:
+    sbaFlag = bool(args.sba[0])
+
+start = time.time()
 response = requests.post(AWARD_SEARCH_REQUEST_URL, json=obj)
+end = time.time()
+
+#print("time for award search: " + str(end - start))
+
 results = response.json()["results"]
 
 if debugFlag:
@@ -123,8 +232,12 @@ for result in results:
     name = result["Recipient Name"]
 
     try:
+        startSAM = time.time()
         samResponse = requests.get(ENTITY_SEARCH_URL, params={'legalBusinessName': name, 'api_key': API_KEY})
-        
+        endSAM = time.time()
+
+        #print("time for sam search: " + str(endSAM - startSAM))
+
         # if company info is not found, this award will not be included 
         if samResponse.status_code != 200:
             cnt += 1
@@ -133,6 +246,7 @@ for result in results:
         samResponse = samResponse.json()
 
         url = samResponse['entityData'][0]['coreData']["entityInformation"]['entityURL']
+        #print(url)
         businessTypes = samResponse['entityData'][0]['coreData']["businessTypes"]
         businessTypeList = [x["businessTypeDesc"] for x in businessTypes["businessTypeList"]]
         sba8aEntrance = ""
@@ -166,25 +280,35 @@ for result in results:
 
         # call sba search api
         ueiSAM = samResponse['entityData'][0]['entityRegistration']["ueiSAM"]
-        sbaResponse = requests.get(SBA_SEARCH_URL, params={'SAM_UEI': ueiSAM})
 
-        if sbaResponse.status_code != 200:
+        if sbaFlag:
+            startSBA = time.time()
+            sbaResponse = requests.get(SBA_SEARCH_URL, params={'SAM_UEI': ueiSAM})
+            endSBA = time.time()
+            #print("time for sba search: " + str(endSBA - startSBA))
+
+            if sbaResponse.status_code != 200:
+                items.append(info)
+                cnt += 1
+                continue
+
+            sbaResponse = sbaResponse.text
+            parseSbaResponse(sbaResponse, info)
             items.append(info)
-            cnt += 1
-            continue
-
-        sbaResponse = sbaResponse.text
-        parseSbaResponse(sbaResponse, info)
-        items.append(info)
-        
+        else:
+            items.append(info)
+            
         cnt += 1
     except Exception as e:
         if debugFlag:
             print(name, e, flush=True)
         continue
 
+    #print("-"*50)
+
+
 res = json.dumps(items)
 stamp = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
-with open(f"results/results_{stamp}.json", "w") as f:
+with open(f"results/results.json", "w") as f:
     f.write(res)
-print(res, flush=True)
+#print(res, flush=True)
