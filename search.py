@@ -181,6 +181,7 @@ parser.add_argument('--agencies',nargs="*",help="agency abbreviations",required=
 parser.add_argument('--max',nargs=1,default=10,help="max number of results",required=False)
 parser.add_argument('--sba', nargs=1,default=[False],help="if this is true, it will search sba.gov",required=False)
 parser.add_argument('--debug',nargs=1,default=False,help="if this is true, debug output will be printed. otherwise, just the end json will be printed",required=False)
+parser.add_argument('--apikey',nargs=1,default=None,help="api key for sam.gov",required=False)
 
 args = parser.parse_args()
 
@@ -212,6 +213,9 @@ elif isinstance(args.sba[0], bool):
 else:
     sbaFlag = bool(args.sba[0])
 
+if args.apikey is not None:
+    API_KEY = args.apikey[0]
+
 start = time.time()
 response = requests.post(AWARD_SEARCH_REQUEST_URL, json=obj)
 end = time.time()
@@ -235,6 +239,11 @@ for result in results:
         startSAM = time.time()
         samResponse = requests.get(ENTITY_SEARCH_URL, params={'legalBusinessName': name, 'api_key': API_KEY})
         endSAM = time.time()
+
+        if 'error' in samResponse.json() and samResponse.json()['error']['code'] == "API_KEY_INVALID":
+            print("Invalid API Key")
+            exit(1)
+            
 
         #print("time for sam search: " + str(endSAM - startSAM))
 
@@ -305,7 +314,6 @@ for result in results:
         continue
 
     #print("-"*50)
-
 
 res = json.dumps(items)
 stamp = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
